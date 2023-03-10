@@ -66,6 +66,7 @@ def train(model = None, save_path = '', config={},  train_dataloader=None, val_d
             x, labels, edge_index = [item.float().to(device) for item in [x, labels, edge_index]]
 
             optimizer.zero_grad()
+            # 因为训练过程中，图的结构其实是一直在变的，所以这里其实不需要将图结构传入
             out = model(x, edge_index).float().to(device)
             loss = loss_func(out, labels)
             

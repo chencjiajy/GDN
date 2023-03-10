@@ -49,18 +49,24 @@ class Main():
         if 'attack' in train.columns:
             train = train.drop(columns=['attack'])
 
+        # 获取数据集的特征名，相当于获取特征的字段名
         feature_map = get_feature_map(dataset)
+        # 给特征之间创建图，这里的图是一个全联通图, 返回了一个dict(list)的数据结构，也就是每个特征有一个除了自己之外的列表
         fc_struc = get_fc_graph_struc(dataset)
 
         set_device(env_config['device'])
         self.device = get_device()
 
+        # 生成一个二维嵌套list, list[0]和list[1]的长度一样，为整个图中边的数目，表示从list[1]和list[0]相同位置有一条边， 边由feature_map的索引表示
+        # 是因为pytorch-geometric表示的格式是这样的，为了符合 COO 稀疏格式
         fc_edge_index = build_loc_net(fc_struc, list(train.columns), feature_map=feature_map)
         fc_edge_index = torch.tensor(fc_edge_index, dtype = torch.long)
 
         self.feature_map = feature_map
 
+        # 结果为一个列表，列表的每个item为相应特征的所有数据，如果有10个特征，则列表的长度就为11（10个特征+1个标签）， 训练数据没有是否异常的标签，默认为零
         train_dataset_indata = construct_data(train, feature_map, labels=0)
+        # 结果为一个列表，列表的每个值为对应特征的所有数据，列表的最后一个值为标签
         test_dataset_indata = construct_data(test, feature_map, labels=test.attack.tolist())
 
 
@@ -69,10 +75,11 @@ class Main():
             'slide_stride': train_config['slide_stride'],
         }
 
+        # 生成pytorch数据集
         train_dataset = TimeDataset(train_dataset_indata, fc_edge_index, mode='train', config=cfg)
         test_dataset = TimeDataset(test_dataset_indata, fc_edge_index, mode='test', config=cfg)
 
-
+        # 生成dataloader
         train_dataloader, val_dataloader = self.get_loaders(train_dataset, train_config['seed'], train_config['batch'], val_ratio = train_config['val_ratio'])
 
         self.train_dataset = train_dataset
@@ -84,7 +91,7 @@ class Main():
         self.test_dataloader = DataLoader(test_dataset, batch_size=train_config['batch'],
                             shuffle=False, num_workers=0)
 
-
+        # TODO 这里为什么要将fc_edge_index放到一个列表里去呢
         edge_index_sets = []
         edge_index_sets.append(fc_edge_index)
 
@@ -126,6 +133,9 @@ class Main():
         self.get_score(self.test_result, self.val_result)
 
     def get_loaders(self, train_dataset, seed, batch, val_ratio=0.1):
+        '''
+        根据val_ratio比例的大小，随机生成一个val_start_index，从而从数据集中随机选一段数据作为验证集
+        '''
         dataset_len = int(len(train_dataset))
         train_use_len = int(dataset_len * (1 - val_ratio))
         val_use_len = int(dataset_len * val_ratio)
@@ -148,7 +158,9 @@ class Main():
         return train_dataloader, val_dataloader
 
     def get_score(self, test_result, val_result):
-
+        '''
+        计算评价指标
+        '''
         feature_num = len(test_result[0][0])
         np_test_result = np.array(test_result)
         np_val_result = np.array(val_result)
@@ -158,6 +170,7 @@ class Main():
         test_scores, normal_scores = get_full_err_scores(test_result, val_result)
 
         top1_best_info = get_best_performance_data(test_scores, test_labels, topk=1) 
+        # 这里因为论文中说使用验证集的分数来当阈值，所以验证集的数据被称为nornal_scores
         top1_val_info = get_val_performance_data(test_scores, normal_scores, test_labels, topk=1)
 
 

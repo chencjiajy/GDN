@@ -22,6 +22,7 @@ class GraphLayer(MessagePassing):
 
         self.__alpha__ = None
 
+        # 公式(5)中的权重矩阵
         self.lin = Linear(in_channels, heads * out_channels, bias=False)
 
         self.att_i = Parameter(torch.Tensor(1, heads, out_channels))
@@ -57,8 +58,11 @@ class GraphLayer(MessagePassing):
             x = (x, x)
         else:
             x = (self.lin(x[0]), self.lin(x[1]))
-
+        
+        # 去掉图中的自环，防止后面添加时有重复，GAT的实现也是这样 https://pytorch-geometric.readthedocs.io/en/1.5.0/_modules/torch_geometric/nn/conv/gat_conv.html
         edge_index, _ = remove_self_loops(edge_index)
+        # 给图中添加自环， 后一个参数有什么作用呢？num_nodes参数是图中的节点个数，
+        # 因为edge_index可能没有包括所有的节点，所以加这个就可以把所有节点的自环都加进来， x[1].size(self.node_dim)在这里代表着图中的所有节点
         edge_index, _ = add_self_loops(edge_index,
                                        num_nodes=x[1].size(self.node_dim))
 
@@ -83,7 +87,9 @@ class GraphLayer(MessagePassing):
                 embedding,
                 edges,
                 return_attention_weights):
-
+        '''
+        这里是论文的公式6/7/8
+        '''
         x_i = x_i.view(-1, self.heads, self.out_channels)
         x_j = x_j.view(-1, self.heads, self.out_channels)
 

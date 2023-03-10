@@ -46,6 +46,10 @@ def get_final_err_scores(test_result, val_result):
 
 
 def get_err_scores(test_res, val_res):
+    '''
+    对应论文3.6节 Graph deviation scoring
+    '''
+
     test_predict, test_gt = test_res
     val_predict, val_gt = val_res
 

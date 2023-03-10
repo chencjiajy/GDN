@@ -24,6 +24,7 @@ class TimeDataset(Dataset):
         data = torch.tensor(data).double()
         labels = torch.tensor(labels).double()
 
+        # x是时间序列窗口范围内的数据，y是当前时间点的数据
         self.x, self.y, self.labels = self.process(data, labels)
     
     def __len__(self):
@@ -42,7 +43,7 @@ class TimeDataset(Dataset):
         node_num, total_time_len = data.shape
 
         rang = range(slide_win, total_time_len, slide_stride) if is_train else range(slide_win, total_time_len)
-        
+        # 滑动窗口处理数据集
         for i in rang:
 
             ft = data[:, i-slide_win:i]

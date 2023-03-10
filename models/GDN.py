@@ -13,6 +13,9 @@ from .graph_layer import GraphLayer
 
 
 def get_batch_edge_index(org_edge_index, batch_num, node_num):
+    '''取batch edge index
+    TODO 为什么是这样实现的？主要不理解为什么要加上i*node_num, 这里输出来的结果还是COO的格式吗？
+    '''
     # org_edge_index:(2, edge_num)
     edge_index = org_edge_index.clone().detach()
     edge_num = org_edge_index.shape[1]
@@ -25,6 +28,9 @@ def get_batch_edge_index(org_edge_index, batch_num, node_num):
 
 
 class OutLayer(nn.Module):
+    '''
+    论文中的公式9
+    '''
     def __init__(self, in_num, node_num, layer_num, inter_num = 512):
         super(OutLayer, self).__init__()
 
@@ -58,10 +64,13 @@ class OutLayer(nn.Module):
 
 
 class GNNLayer(nn.Module):
+    '''
+    主要实现了论文中的公式（5）
+    '''
     def __init__(self, in_channel, out_channel, inter_dim=0, heads=1, node_num=100):
         super(GNNLayer, self).__init__()
 
-
+        # 这里的concat 是类似于transfomer里的多头注意力机制，
         self.gnn = GraphLayer(in_channel, out_channel, inter_dim=inter_dim, heads=heads, concat=False)
 
         self.bn = nn.BatchNorm1d(out_channel)
@@ -81,7 +90,10 @@ class GNNLayer(nn.Module):
 
 class GDN(nn.Module):
     def __init__(self, edge_index_sets, node_num, dim=64, out_layer_inter_dim=256, input_dim=10, out_layer_num=1, topk=20):
-
+        '''
+        edge_index_sets: COO 稀疏格式表示的图
+        node_num: 图的节点个数，也就是特征的个数
+        '''
         super(GDN, self).__init__()
 
         self.edge_index_sets = edge_index_sets
@@ -90,12 +102,12 @@ class GDN(nn.Module):
 
         edge_index = edge_index_sets[0]
 
-
+        # embedding 层
         embed_dim = dim
         self.embedding = nn.Embedding(node_num, embed_dim)
         self.bn_outlayer_in = nn.BatchNorm1d(embed_dim)
 
-
+        # 这里实际edge_set_num 为1， 所以是生成一个GNNLayer层
         edge_set_num = len(edge_index_sets)
         self.gnn_layers = nn.ModuleList([
             GNNLayer(input_dim, dim, inter_dim=dim+embed_dim, heads=1) for i in range(edge_set_num)
@@ -106,6 +118,7 @@ class GDN(nn.Module):
         self.topk = topk
         self.learned_graph = None
 
+        # 输出层
         self.out_layer = OutLayer(dim*edge_set_num, node_num, out_layer_num, inter_num = out_layer_inter_dim)
 
         self.cache_edge_index_sets = [None] * edge_set_num
@@ -113,6 +126,7 @@ class GDN(nn.Module):
 
         self.dp = nn.Dropout(0.2)
 
+        # 随机初始化embedding
         self.init_params()
     
     def init_params(self):
@@ -132,9 +146,10 @@ class GDN(nn.Module):
 
         gcn_outs = []
         for i, edge_index in enumerate(edge_index_sets):
-            edge_num = edge_index.shape[1]
+            edge_num = edge_index.shape[1]    # 图中所有的边数目
             cache_edge_index = self.cache_edge_index_sets[i]
 
+            # 这一步有什么用呢
             if cache_edge_index is None or cache_edge_index.shape[1] != edge_num*batch_num:
                 self.cache_edge_index_sets[i] = get_batch_edge_index(edge_index, batch_num, node_num).to(device)
             
@@ -146,7 +161,7 @@ class GDN(nn.Module):
             all_embeddings = all_embeddings.repeat(batch_num, 1)
 
             weights = weights_arr.view(node_num, -1)
-
+            # 论文中公式2
             cos_ji_mat = torch.matmul(weights, weights.T)
             normed_mat = torch.matmul(weights.norm(dim=-1).view(-1,1), weights.norm(dim=-1).view(1,-1))
             cos_ji_mat = cos_ji_mat / normed_mat
@@ -175,6 +190,7 @@ class GDN(nn.Module):
         indexes = torch.arange(0,node_num).to(device)
         out = torch.mul(x, self.embedding(indexes))
         
+        # 因为输出层是stacked fully-connected layers，所以这里才会进行permute吧
         out = out.permute(0,2,1)
         out = F.relu(self.bn_outlayer_in(out))
         out = out.permute(0,2,1)
